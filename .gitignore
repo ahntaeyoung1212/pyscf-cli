@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Environments
+.venv/
+venv/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# OS
+.DS_Store
+
+# Calculation outputs (never commit student/test run artifacts)
+*.chk
+DOS_*.pdf
+DOS_*.csv
+DOS_*.txt
+relax_*.txt
+WF_*/
+vib_movies_*/
+*-finish.xyz
