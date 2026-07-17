@@ -105,6 +105,9 @@ def energy_script(args):
         ("--zpe", getattr(args, "zpe", False)),
         ("--decompose-total-energy", getattr(args, "decompose_total_energy", False)),
         ("--fixed-occ-decomp", getattr(args, "fixed_occ_decomp", False)),
+        ("--occ-alpha/--occ-beta",
+         getattr(args, "occ_alpha", None) is not None
+         or getattr(args, "occ_beta", None) is not None),
     ])
     return "\n".join([
         HEADER + note,

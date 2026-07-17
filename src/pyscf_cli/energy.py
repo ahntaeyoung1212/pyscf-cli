@@ -7,7 +7,7 @@ only input handling and output formatting go through core/output.
 from __future__ import annotations
 
 import numpy as np
-from pyscf import scf
+from pyscf import ao2mo, scf
 from pyscf.hessian import thermo as pyscf_thermo
 
 from . import core, dryrun
@@ -48,6 +48,16 @@ def register(subparsers):
                      help="0-based MO index to populate (default: LUMO)")
     mom.add_argument("--promote-spin", default="alpha", choices=["alpha", "beta"],
                      help="spin channel for the promotion (default: alpha)")
+
+    occ = parser.add_argument_group(
+        "explicit electron configuration (Delta-SCF; --theory scf, --method uhf)"
+    )
+    occ.add_argument("--occ-alpha", default=None, metavar="LIST",
+                     help="1-based MO indices to occupy in the alpha channel, "
+                          "e.g. --occ-alpha 1,3 (count must equal N_alpha; "
+                          "an omitted channel keeps the aufbau filling)")
+    occ.add_argument("--occ-beta", default=None, metavar="LIST",
+                     help="1-based MO indices to occupy in the beta channel")
 
     ana = parser.add_argument_group("analysis")
     ana.add_argument("--zpe", action="store_true",
@@ -169,6 +179,78 @@ def rhf_fixed_occ_decompositions(mf, promote_from, promote_to):
     d_ref = uhf_energy_decomposition(mf, dm_of(occ_a_ref), dm_beta)
     d_exc = uhf_energy_decomposition(mf, dm_of(occ_a_exc), dm_beta)
     return d_ref, d_exc
+
+
+# ---------------------------------------------------------------------------
+# Explicit electron configuration (MOM-constrained Delta-SCF)
+# ---------------------------------------------------------------------------
+
+def _parse_mo_list(text, flag):
+    try:
+        indices = [int(tok) for tok in text.replace(" ", "").split(",") if tok]
+    except ValueError:
+        raise InputError(
+            f"{flag} expects comma-separated MO numbers, e.g. '{flag} 1,3' "
+            f"(got '{text}')"
+        )
+    if not indices:
+        raise InputError(f"{flag}: no MO numbers given")
+    if min(indices) < 1:
+        raise InputError(f"{flag}: MO numbers are 1-based (got {min(indices)})")
+    if len(set(indices)) != len(indices):
+        raise InputError(f"{flag}: duplicate MO index in '{text}'")
+    return sorted(indices)
+
+
+def run_custom_occ_scf(args):
+    """Converge a UHF determinant with the requested orbital occupations.
+
+    The occupation pattern is expressed in the MOs of a converged aufbau
+    reference; the maximum overlap method keeps the SCF from collapsing
+    back to the ground configuration while the orbitals relax.
+    """
+    if args.method != "uhf":
+        raise InputError(
+            "--occ-alpha/--occ-beta require --method uhf "
+            "(the alpha and beta channels are occupied independently)."
+        )
+
+    mol = core.build_mol(args.atoms, args.basis, args.charge, args.spin, args.unit)
+    nalpha, nbeta = mol.nelec
+    ref = core.build_mf(mol, "uhf")
+    core.run_scf(ref)
+    mo_coeff = np.asarray(ref.mo_coeff)
+    nmo = mo_coeff.shape[2]
+
+    def channel_occ(indices, n_required, flag):
+        occ = np.zeros(nmo)
+        if indices is None:
+            occ[:n_required] = 1.0
+            return occ, "aufbau"
+        if len(indices) != n_required:
+            raise InputError(
+                f"{flag} lists {len(indices)} orbital(s), but this molecule has "
+                f"{n_required} electron(s) in that spin channel\n"
+                f"(charge={args.charge}, spin 2S={args.spin} -> "
+                f"N_alpha={nalpha}, N_beta={nbeta}).\n"
+                "Fix the list, or change --spin/--charge to match the "
+                "configuration you want."
+            )
+        if max(indices) > nmo:
+            raise InputError(f"{flag}: MO {max(indices)} out of range (1..{nmo})")
+        occ[[i - 1 for i in indices]] = 1.0
+        return occ, ", ".join(f"MO {i}" for i in indices)
+
+    occ_a, text_a = channel_occ(args.occ_alpha, nalpha, "--occ-alpha")
+    occ_b, text_b = channel_occ(args.occ_beta, nbeta, "--occ-beta")
+
+    mf = core.build_mf(mol, "uhf")
+    mf.verbose = 0
+    mf = scf.addons.mom_occ(mf, ref.mo_coeff, np.array([occ_a, occ_b]))
+    dma = (mo_coeff[0] * occ_a) @ mo_coeff[0].conj().T
+    dmb = (mo_coeff[1] * occ_b) @ mo_coeff[1].conj().T
+    mf.kernel(dm0=(dma, dmb))
+    return mf, text_a, text_b
 
 
 # ---------------------------------------------------------------------------
@@ -425,6 +507,26 @@ def _fixed_occ_section(r, args):
     r.add("fixed_occ_reference_eV", {k: v * HARTREE_TO_EV for k, v in d_ref.items()})
     r.add("fixed_occ_excited_eV", {k: v * HARTREE_TO_EV for k, v in d_exc.items()})
 
+    if args.method == "rhf":
+        # The ms=0 promoted determinant is a 50:50 singlet/triplet mixture;
+        # the exchange integral K between the two open orbitals splits them.
+        orbs = mf.mo_coeff[:, [promote_from, promote_to]]
+        eri = ao2mo.kernel(mf.mol, orbs, compact=False).reshape(2, 2, 2, 2)
+        k_sp = float(eri[0, 1, 1, 0].real)
+        delta = d_exc["e_tot"] - d_ref["e_tot"]
+        r.line()
+        r.line(
+            f"Exchange integral K(MO {promote_from + 1}, MO {promote_to + 1}) "
+            f"= {k_sp * HARTREE_TO_EV:.6f} eV"
+        )
+        r.line("The promoted determinant (ms=0) is a 50:50 singlet/triplet")
+        r.line("mixture; K splits the frozen-orbital spin states:")
+        r.line(f"  Triplet (Delta - K): {(delta - k_sp) * HARTREE_TO_EV:10.6f} eV")
+        r.line(f"  Singlet (Delta + K): {(delta + k_sp) * HARTREE_TO_EV:10.6f} eV")
+        r.add("fixed_occ_K_eV", k_sp * HARTREE_TO_EV)
+        r.add("fixed_occ_triplet_estimate_eV", (delta - k_sp) * HARTREE_TO_EV)
+        r.add("fixed_occ_singlet_estimate_eV", (delta + k_sp) * HARTREE_TO_EV)
+
 
 def _pes_section(r, args):
     if len(args.atoms) != 2:
@@ -494,7 +596,32 @@ def run(args):
             "--mom cannot be combined with --pes or --fixed-occ-decomp; "
             "run them separately."
         )
+
+    custom_occ = args.occ_alpha is not None or args.occ_beta is not None
+    if custom_occ:
+        if args.theory != "scf":
+            raise InputError("--occ-alpha/--occ-beta support --theory scf only.")
+        if args.mom:
+            raise InputError(
+                "--mom and --occ-alpha/--occ-beta are two ways to do the same "
+                "thing; use one of them."
+            )
+        if args.pes or args.fixed_occ_decomp:
+            raise InputError(
+                "--occ-alpha/--occ-beta cannot be combined with --pes or "
+                "--fixed-occ-decomp."
+            )
+        if args.occ_alpha is not None:
+            args.occ_alpha = _parse_mo_list(args.occ_alpha, "--occ-alpha")
+        if args.occ_beta is not None:
+            args.occ_beta = _parse_mo_list(args.occ_beta, "--occ-beta")
+
     if args.zpe:
+        if args.mom or custom_occ:
+            raise InputError(
+                "--zpe needs the ground-state SCF; it cannot be combined with "
+                "--mom or --occ-alpha/--occ-beta."
+            )
         core.require_hessian_capable(args.method, args.spin)
 
     r = Report("PySCF Calculation (pyscf-cli energy)")
@@ -522,7 +649,13 @@ def run(args):
     elif args.fixed_occ_decomp:
         _fixed_occ_section(r, args)
     else:
-        if args.mom:
+        if custom_occ:
+            mf, occ_text_a, occ_text_b = run_custom_occ_scf(args)
+            r.kv("Alpha occ", occ_text_a, key="occ_alpha")
+            r.kv("Beta occ", occ_text_b, key="occ_beta")
+            e_tot = mf.e_tot
+            info = {"label": "UHF (explicit occupation)"}
+        elif args.mom:
             mf, p_from, p_to, p_spin = run_mom_excited_scf(args)
             r.kv("MOM used", f"{p_spin} MO {p_from + 1} -> MO {p_to + 1}",
                  key="mom_promotion")
