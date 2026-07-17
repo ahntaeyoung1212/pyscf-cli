@@ -84,6 +84,20 @@ class Report:
                 f.write("\n")
 
 
+def use_headless_matplotlib():
+    """Configure matplotlib for file output (no display, writable config dir)."""
+    import os
+    import tempfile
+
+    os.environ.setdefault(
+        "MPLCONFIGDIR", os.path.join(tempfile.gettempdir(), "matplotlib")
+    )
+    import matplotlib
+
+    matplotlib.use("Agg")
+    return matplotlib
+
+
 def _jsonable(obj):
     """Fallback serializer for numpy scalars/arrays."""
     if hasattr(obj, "tolist"):

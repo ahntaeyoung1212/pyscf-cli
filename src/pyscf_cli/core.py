@@ -29,6 +29,7 @@ from pyscf import cc, dft, gto, mp, scf
 #: CODATA 2018 value, used consistently by every subcommand.
 HARTREE_TO_EV = 27.211386245988
 CM1_TO_EV = 1.239841984e-4
+HARTREE_TO_CM1 = 219474.6313705
 
 EXIT_OK = 0
 EXIT_INPUT_ERROR = 2
@@ -389,6 +390,7 @@ def add_common_arguments(
     default_basis="sto-3g",
     theories=tuple(THEORY_CHOICES),
     include_method=True,
+    include_dry_run=False,
 ):
     """Attach the option set shared by every calculation subcommand."""
     parser.add_argument(
@@ -447,6 +449,13 @@ def add_common_arguments(
         metavar="FILE",
         help="also write results as JSON to FILE ('-' or no value = stdout)",
     )
+    if include_dry_run:
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="print an equivalent PySCF Python script and exit "
+                 "(see what runs under the hood, then graduate to PySCF itself)",
+        )
     return parser
 
 

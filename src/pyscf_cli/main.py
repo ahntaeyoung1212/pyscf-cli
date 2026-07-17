@@ -32,12 +32,19 @@ def _subcommand_modules():
     fast and a broken optional dependency in one subcommand does not take
     down the whole CLI.
     """
-    from . import info
+    from . import (
+        dos,
+        energy,
+        examples,
+        info,
+        orbitals,
+        relax,
+        thermo,
+        vib,
+        vibmovie,
+    )
 
-    modules = [info]
-    # Phase 2 will extend this list:
-    # from . import energy, relax, vib, thermo, dos, orbitals, vibmovie, examples
-    return modules
+    return [energy, relax, vib, thermo, dos, orbitals, vibmovie, examples, info]
 
 
 def build_parser():
