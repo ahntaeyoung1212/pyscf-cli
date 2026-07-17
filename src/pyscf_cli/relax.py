@@ -10,9 +10,8 @@ from __future__ import annotations
 
 import os
 
-from pyscf.geomopt.geometric_solver import optimize
-
 from . import core, dryrun
+from .core import InputError
 from .output import Report
 
 
@@ -23,7 +22,7 @@ def register(subparsers):
         description=(
             "Optimize the molecular geometry with geomeTRIC on the SCF/DFT "
             "surface, then report the final energy and write the optimized "
-            "structure as <input>_opt.xyz."
+            "structure as <input>-finish.xyz."
         ),
     )
     core.add_common_arguments(parser, include_dry_run=True)
@@ -41,6 +40,16 @@ def run(args):
     if args.dry_run:
         print(dryrun.relax_script(args))
         return 0
+
+    # Imported lazily so a broken/missing 'geometric' package cannot take
+    # down the whole CLI (main.py imports every subcommand module).
+    try:
+        from pyscf.geomopt.geometric_solver import optimize
+    except ImportError as exc:
+        raise InputError(
+            "Geometry optimization needs the 'geometric' package, which "
+            f"could not be imported ({exc}).\nInstall it with: pip install geometric"
+        )
 
     txt_file = args.txt or f"{core.output_stem(args, 'relax')}.txt"
     input_root = os.path.splitext(os.path.basename(args.xyz))[0]
@@ -85,4 +94,4 @@ def run(args):
     ])
     r.rule("=")
     r.emit(txt_path=txt_file, json_target=args.json)
-    return 0
+    return core.scf_exit_code(mf_final)

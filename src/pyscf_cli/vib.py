@@ -44,6 +44,8 @@ def run(args):
         print(dryrun.vib_script(args))
         return 0
 
+    core.require_hessian_capable(args.method, args.spin)
+
     mol = core.build_mol(args.atoms, args.basis, args.charge, args.spin, args.unit)
     mf, method_label = core.build_reference(mol, args.theory, args.method, args.xc)
     core.run_scf(mf)
@@ -92,7 +94,7 @@ def run(args):
             r.line("try 'pyscf-cli relax' first, then rerun the analysis.")
         r.rule("=")
         r.emit(json_target=args.json)
-        return 0
+        return core.scf_exit_code(mf)
 
     r.line(f"Harmonic vibrational levels up to n={args.nmax}")
     r.line("(E_n = (n + 1/2) h nu, for each normal mode)")
@@ -106,4 +108,4 @@ def run(args):
 
     r.rule("=")
     r.emit(json_target=args.json)
-    return 0
+    return core.scf_exit_code(mf)

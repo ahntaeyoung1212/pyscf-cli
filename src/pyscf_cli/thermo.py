@@ -63,6 +63,8 @@ def run(args):
         print(dryrun.thermo_script(args))
         return 0
 
+    core.require_hessian_capable(args.method, args.spin)
+
     mol = core.build_mol(args.atoms, args.basis, args.charge, args.spin, args.unit)
     mf, method_label = core.build_reference(mol, args.theory, args.method, args.xc)
     core.run_scf(mf)
@@ -73,6 +75,7 @@ def run(args):
     positive_real = int(np.sum(
         (np.abs(freqs_cm1.imag) < 1e-8) & (freqs_cm1.real > 1e-6)
     ))
+    n_imag = int(np.sum(np.abs(freqs_cm1.imag) > 1e-8))
 
     thermo_result = pyscf_thermo.thermo(
         mf, vib_data["freq_au"], temperature=args.temp, pressure=args.pressure
@@ -87,6 +90,11 @@ def run(args):
     r.kv("Temperature", f"{args.temp:.2f} K", key="temperature_K")
     r.kv("Pressure", f"{args.pressure:.1f} Pa", key="pressure_Pa")
     r.kv("Real vib modes", positive_real, key="n_real_modes")
+    if n_imag:
+        r.kv("Imag. modes", n_imag, key="n_imaginary_modes")
+        r.line("WARNING: imaginary frequencies found - this geometry is not a")
+        r.line("minimum, so the thermochemistry below is NOT valid (imaginary")
+        r.line("modes are silently excluded). Optimize first: pyscf-cli relax")
     r.rule()
 
     for key in ("E0", "ZPE", "E_0K", "E_tot", "H_tot", "G_tot"):
@@ -101,4 +109,4 @@ def run(args):
 
     r.rule("=")
     r.emit(json_target=args.json)
-    return 0
+    return core.scf_exit_code(mf)

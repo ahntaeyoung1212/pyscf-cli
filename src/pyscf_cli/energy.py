@@ -111,20 +111,22 @@ def decompose_total_energy(mf):
     vne_ao = hcore - t_ao
     enuc = mf.energy_nuc()
 
-    if isinstance(mf, scf.uhf.UHF):
-        dma, dmb = mf.make_rdm1()
+    # UHF and ROHF both return stacked (2, nao, nao) alpha/beta densities;
+    # the spin-resolved expressions below are exact for either.
+    dm = np.asarray(mf.make_rdm1())
+    if dm.ndim == 3:
+        dma, dmb = dm
         dm_tot = dma + dmb
         e_kin = np.einsum("ij,ji->", t_ao, dm_tot).real
         e_vne = np.einsum("ij,ji->", vne_ao, dm_tot).real
         j = mf.get_j(dm=dm_tot)
-        ka, kb = mf.get_k(dm=(dma, dmb))
+        ka, kb = mf.get_k(dm=dm)
         e_u = 0.5 * np.einsum("ij,ji->", j, dm_tot).real
         e_j = -0.5 * (
             np.einsum("ij,ji->", ka, dma).real +
             np.einsum("ij,ji->", kb, dmb).real
         )
     else:
-        dm = mf.make_rdm1()
         e_kin = np.einsum("ij,ji->", t_ao, dm).real
         e_vne = np.einsum("ij,ji->", vne_ao, dm).real
         j, k = mf.get_jk(dm=dm)
@@ -139,6 +141,34 @@ def decompose_total_energy(mf):
         "e_nuc": enuc,
         "e_tot": e_kin + e_vne + e_u + e_j + enuc,
     }
+
+
+def rhf_fixed_occ_decompositions(mf, promote_from, promote_to):
+    """Frozen-orbital decompositions for an RHF reference and the
+    determinant with one alpha electron promoted (from -> to).
+
+    Both states are evaluated with the spin-resolved (UHF-form)
+    expressions, which are exact for single determinants: the reference
+    reproduces the RHF energy exactly, and the promoted state is the
+    genuine frozen-orbital excited determinant.  (The legacy script kept
+    fractional occupations in a closed-shell expression, which added
+    ~0.25*J_pp of self-repulsion per half-filled level and overestimated
+    the H2O/STO-3G HOMO->LUMO promotion by ~9.5 eV.)
+    """
+    coeff = mf.mo_coeff
+    occ_a_ref = np.asarray(mf.mo_occ, dtype=float) / 2.0
+
+    def dm_of(occ_vec):
+        return (coeff * occ_vec) @ coeff.conj().T
+
+    occ_a_exc = occ_a_ref.copy()
+    occ_a_exc[promote_from] -= 1.0
+    occ_a_exc[promote_to] += 1.0
+
+    dm_beta = dm_of(occ_a_ref)
+    d_ref = uhf_energy_decomposition(mf, dm_of(occ_a_ref), dm_beta)
+    d_exc = uhf_energy_decomposition(mf, dm_of(occ_a_exc), dm_beta)
+    return d_ref, d_exc
 
 
 # ---------------------------------------------------------------------------
@@ -267,8 +297,14 @@ def _zpe_section(r, mf):
     vib = pyscf_thermo.harmonic_analysis(mf.mol, hess)
 
     freqs = np.atleast_1d(np.asarray(vib["freq_wavenumber"]))
+    n_imag = 0
     if np.iscomplexobj(freqs):
+        n_imag = int(np.sum(np.abs(freqs.imag) > 1e-8))
         freqs = freqs.real[np.abs(freqs.imag) < 1e-8]
+    if n_imag:
+        r.line(f"  WARNING: {n_imag} imaginary mode(s) found - this geometry is a")
+        r.line("  saddle point, not a minimum, so a ZPE is not meaningful here.")
+        r.line("  Optimize first: pyscf-cli relax <file.xyz>")
     real_freqs = freqs[np.isfinite(freqs) & (freqs > 1e-6)]
     if real_freqs.size == 0:
         r.line("  No positive real vibrational frequencies found.")
@@ -321,16 +357,11 @@ def _fixed_occ_section(r, args):
         if occ_ref[promote_to] > 1.0:
             raise InputError(f"MO {promote_to + 1} is already occupied in reference RHF.")
 
-        occ_exc = np.array(occ_ref, copy=True)
-        occ_exc[promote_from] -= 1.0
-        occ_exc[promote_to] += 1.0
-
-        dm_ref = mf.make_rdm1(mf.mo_coeff, occ_ref)
-        dm_exc = mf.make_rdm1(mf.mo_coeff, occ_exc)
-
-        d_ref = rhf_energy_decomposition(mf, dm_ref)
-        d_exc = rhf_energy_decomposition(mf, dm_exc)
-        promo_text = f"MO {promote_from + 1} -> MO {promote_to + 1} (fixed orbitals)"
+        d_ref, d_exc = rhf_fixed_occ_decompositions(mf, promote_from, promote_to)
+        promo_text = (
+            f"MO {promote_from + 1} -> MO {promote_to + 1} "
+            "(frozen orbitals, one alpha electron moved)"
+        )
         model_text = "RHF"
         reference_text = "closed-shell SCF occupancy"
     else:
@@ -411,16 +442,27 @@ def _pes_section(r, args):
     r.rule()
 
     table = []
+    n_unconverged = 0
     for R in r_values:
         atoms = [(elem1, 0.0, 0.0, 0.0), (elem2, 0.0, 0.0, float(R))]
         mol = core.build_mol(atoms, args.basis, args.charge, args.spin, args.unit)
         mf = core.build_mf(mol, args.method)
         core.run_scf(mf, warn=False)
         E = mf.e_tot
-        r.line(f"{R:7.3f}     {E:14.8f}     {E * HARTREE_TO_EV:10.4f}")
-        table.append({"R": float(R), "e_hartree": float(E)})
+        converged = bool(mf.converged)
+        marker = "" if converged else "   (SCF not converged)"
+        if not converged:
+            n_unconverged += 1
+        r.line(f"{R:7.3f}     {E:14.8f}     {E * HARTREE_TO_EV:10.4f}{marker}")
+        table.append({"R": float(R), "e_hartree": float(E), "converged": converged})
+    if n_unconverged:
+        r.line()
+        r.line(f"WARNING: {n_unconverged} scan point(s) did not converge; their")
+        r.line("energies are unreliable (common at large R with RHF - the")
+        r.line("restricted wavefunction cannot dissociate correctly).")
     r.add("pes_unit", args.unit)
     r.add("pes_scan", table)
+    return n_unconverged == 0
 
 
 # ---------------------------------------------------------------------------
@@ -440,6 +482,20 @@ def run(args):
         raise InputError("--fixed-occ-decomp supports --theory scf only.")
     if args.mom and args.theory != "scf":
         raise InputError("--mom currently supports --theory scf only.")
+    if args.decompose_total_energy and args.theory == "dft":
+        raise InputError(
+            "--decompose-total-energy is defined for Hartree-Fock references only.\n"
+            "A Kohn-Sham total energy contains E_xc, so the HF-style\n"
+            "T + V_ne + U + J + V_nn sum would not add up to it. Use --theory scf\n"
+            "(or mp2/ccsd/ccsd_t, whose SCF reference is decomposed)."
+        )
+    if args.mom and (args.pes or args.fixed_occ_decomp):
+        raise InputError(
+            "--mom cannot be combined with --pes or --fixed-occ-decomp; "
+            "run them separately."
+        )
+    if args.zpe:
+        core.require_hessian_capable(args.method, args.spin)
 
     r = Report("PySCF Calculation (pyscf-cli energy)")
     r.kv("XYZ file", args.xyz, key="xyz")
@@ -451,17 +507,18 @@ def run(args):
         r.kv("XC functional", args.xc, key="xc")
     if args.mom:
         r.kv("Excited-state", "MOM Delta-SCF enabled")
-        if args.promote_from is not None and args.promote_to is not None:
-            r.kv(
-                "Promotion",
-                f"{args.promote_spin} MO {args.promote_from + 1} "
-                f"-> MO {args.promote_to + 1}",
-            )
-        else:
-            r.kv("Promotion", f"{args.promote_spin} HOMO -> LUMO (auto)")
+        frm = (f"MO {args.promote_from + 1}" if args.promote_from is not None
+               else "HOMO")
+        to = (f"MO {args.promote_to + 1}" if args.promote_to is not None
+              else "LUMO")
+        auto = ("" if (args.promote_from is not None and args.promote_to is not None)
+                else " (auto)")
+        r.kv("Promotion", f"{args.promote_spin} {frm} -> {to}{auto}")
 
+    exit_code = 0
     if args.pes:
-        _pes_section(r, args)
+        if not _pes_section(r, args):
+            exit_code = core.EXIT_NOT_CONVERGED
     elif args.fixed_occ_decomp:
         _fixed_occ_section(r, args)
     else:
@@ -475,12 +532,15 @@ def run(args):
             mol = core.build_mol(args.atoms, args.basis, args.charge,
                                  args.spin, args.unit)
             mf, e_tot, info = core.run_theory(mol, args.theory, args.method, args.xc)
+        exit_code = core.scf_exit_code(mf)
+        r.add("scf_converged", bool(getattr(mf, "converged", True)))
         _results_section(r, mf, e_tot, info)
 
         if args.decompose_total_energy:
             if args.theory != "scf":
                 r.line()
-                r.line("Note: decomposition uses the SCF/DFT reference density.")
+                r.line("Note: the SCF reference is decomposed; the sum equals the")
+                r.line("SCF total energy, not the correlated total energy.")
             _total_decomposition_section(r, mf)
 
         if args.zpe:
@@ -491,4 +551,4 @@ def run(args):
 
     r.rule("=")
     r.emit(json_target=args.json)
-    return 0
+    return exit_code

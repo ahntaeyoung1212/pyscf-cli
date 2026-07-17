@@ -128,10 +128,15 @@ def render_gif(path, symbols, frames, bonds, fps):
 
 def run(args):
     core.finalize_common_args(args)
+    core.require_hessian_capable(args.method, args.spin)
     use_headless_matplotlib()
 
     symbols = [a[0] for a in args.atoms]
     coords0 = np.array([[a[1], a[2], a[3]] for a in args.atoms], dtype=float)
+    if args.unit.lower().startswith("b"):
+        # Animation, bond detection, amplitude, and the multi-frame XYZ all
+        # work in Angstrom; convert Bohr input coordinates once here.
+        coords0 *= core.BOHR_TO_ANG
 
     mol = core.build_mol(args.atoms, args.basis, args.charge, args.spin, args.unit)
     mf, method_label = core.build_reference(mol, args.theory, args.method, args.xc)
@@ -198,10 +203,18 @@ def run(args):
         write_multixyz(xyz_path, symbols, frames)
         render_gif(gif_path, symbols, frames, bonds, fps=args.fps)
 
-        r.line(f"Mode {midx:3d}: {mode_freq.real:10.4f} cm^-1 -> {xyz_path}, {gif_path}")
+        imaginary = abs(mode_freq.imag) > 1e-8
+        if imaginary:
+            freq_text = f"{abs(mode_freq.imag):10.4f}i cm^-1 (imaginary mode)"
+            freq_value = -abs(float(mode_freq.imag))
+        else:
+            freq_text = f"{mode_freq.real:10.4f} cm^-1"
+            freq_value = float(mode_freq.real)
+        r.line(f"Mode {midx:3d}: {freq_text} -> {xyz_path}, {gif_path}")
         movies.append({
             "mode": midx,
-            "freq_cm1": float(mode_freq.real),
+            "freq_cm1": freq_value,
+            "imaginary": imaginary,
             "xyz": xyz_path,
             "gif": gif_path,
         })
@@ -209,4 +222,4 @@ def run(args):
     r.add("movies", movies)
     r.rule("=")
     r.emit(json_target=args.json)
-    return 0
+    return core.scf_exit_code(mf)

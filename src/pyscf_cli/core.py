@@ -30,6 +30,7 @@ from pyscf import cc, dft, gto, mp, scf
 HARTREE_TO_EV = 27.211386245988
 CM1_TO_EV = 1.239841984e-4
 HARTREE_TO_CM1 = 219474.6313705
+BOHR_TO_ANG = 0.529177210903
 
 EXIT_OK = 0
 EXIT_INPUT_ERROR = 2
@@ -127,6 +128,12 @@ def read_xyz(xyz_file):
             "An XYZ file looks like:\n"
             "  3\n  water molecule (comment line)\n"
             "  O 0.000 0.000 0.117\n  H 0.000 0.757 -0.469\n  H 0.000 -0.757 -0.469"
+        )
+
+    if natoms <= 0:
+        raise InputError(
+            f"'{xyz_file}' declares {natoms} atoms on line 1; "
+            "an XYZ file must contain at least one atom."
         )
 
     atom_lines = lines[2:2 + natoms]
@@ -246,6 +253,12 @@ def build_mol(atoms, basis, charge=0, spin=0, unit="Angstrom"):
         )
     except RuntimeError as exc:
         msg = str(exc)
+        if "basis" in msg.lower():
+            raise InputError(
+                f"PySCF could not find basis '{basis}' for this molecule.\n"
+                f"PySCF said: {msg.strip()}\n"
+                "List common choices with: pyscf-cli info basis"
+            )
         if "spin" in msg.lower() or "electron" in msg.lower():
             raise InputError(
                 f"Impossible charge/spin combination (charge={charge}, spin 2S={spin}).\n"
@@ -275,11 +288,20 @@ def build_mf(mol, method):
 
 
 def build_ks(mol, spin, xc, method="auto"):
-    """Return a Kohn-Sham object (RKS for closed-shell, UKS otherwise)."""
-    if method == "uhf" or spin != 0:
+    """Return a Kohn-Sham object honoring the requested reference type.
+
+    rhf -> RKS (ROKS for open shells), rohf -> ROKS, uhf -> UKS,
+    auto -> RKS closed-shell / UKS open-shell.
+    """
+    method = (method or "auto").lower()
+    if method == "uhf":
         mf = dft.UKS(mol)
+    elif method == "rohf":
+        mf = dft.ROKS(mol)
+    elif method == "rhf":
+        mf = dft.RKS(mol)  # PySCF promotes this to ROKS for open shells
     else:
-        mf = dft.RKS(mol)
+        mf = dft.RKS(mol) if spin == 0 else dft.UKS(mol)
     mf.xc = xc
     return mf
 
@@ -290,6 +312,24 @@ def build_reference(mol, theory, method, xc):
         return build_ks(mol, mol.spin, xc, method), f"DFT ({xc})"
     mf = build_mf(mol, method)
     return mf, method.upper()
+
+
+def require_hessian_capable(method, spin):
+    """Fail early for references whose analytic Hessian PySCF lacks."""
+    if method == "rohf" or (method == "rhf" and spin != 0):
+        raise InputError(
+            "Analytic Hessians for restricted open-shell references (ROHF/ROKS) "
+            "are not implemented in PySCF.\n"
+            "Use --method uhf for open-shell vibrational or thermochemistry "
+            "calculations."
+        )
+
+
+def scf_exit_code(*mfs):
+    """EXIT_OK if every SCF converged, else EXIT_NOT_CONVERGED."""
+    if all(getattr(mf, "converged", True) for mf in mfs):
+        return EXIT_OK
+    return EXIT_NOT_CONVERGED
 
 
 def run_scf(mf, warn=True):
@@ -479,6 +519,15 @@ def finalize_common_args(args):
         )
     args.xyz = xyz
     args.atoms = read_xyz(xyz)
+
+    json_target = getattr(args, "json", None)
+    if json_target and json_target != "-" and json_target.lower().endswith(".xyz"):
+        raise InputError(
+            f"--json captured '{json_target}', which looks like an input XYZ file.\n"
+            "Place --json AFTER the XYZ file, or give it an explicit value:\n"
+            "  pyscf-cli energy molecule.xyz --json result.json\n"
+            "  pyscf-cli energy molecule.xyz --json -        (JSON to stdout)"
+        )
 
     args.basis = normalize_basis(args.basis)
     if hasattr(args, "xc"):

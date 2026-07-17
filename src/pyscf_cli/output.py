@@ -72,20 +72,22 @@ class Report:
     def emit(self, txt_path=None, json_target=None):
         """Print to stdout; optionally save .txt and/or JSON.
 
-        ``json_target``: None (off), '-' (stdout), or a file path — wired
-        directly to the common ``--json`` flag.
+        ``json_target``: None (off), '-' (pure JSON on stdout, text report
+        suppressed so the output is pipeable), or a file path (JSON saved,
+        text report still printed) — wired to the common ``--json`` flag.
         """
-        sys.stdout.write(self.text())
-        if txt_path:
-            with open(txt_path, "w", encoding="utf-8") as f:
-                f.write(self.text())
         if json_target == "-":
             json.dump(self.data, sys.stdout, indent=2, default=_jsonable)
             sys.stdout.write("\n")
-        elif json_target:
-            with open(json_target, "w", encoding="utf-8") as f:
-                json.dump(self.data, f, indent=2, default=_jsonable)
-                f.write("\n")
+        else:
+            sys.stdout.write(self.text())
+            if json_target:
+                with open(json_target, "w", encoding="utf-8") as f:
+                    json.dump(self.data, f, indent=2, default=_jsonable)
+                    f.write("\n")
+        if txt_path:
+            with open(txt_path, "w", encoding="utf-8") as f:
+                f.write(self.text())
 
 
 def use_headless_matplotlib():
