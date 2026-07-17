@@ -4,7 +4,7 @@
 
 [![CI](https://github.com/ahntaeyoung1212/pyscf-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/ahntaeyoung1212/pyscf-cli/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ahntaeyoung1212/pyscf-cli/blob/main/examples/colab_quickstart.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/ahntaeyoung1212/pyscf-cli/blob/main/example/colab_quickstart.ipynb)
 
 `pyscf-cli` is an educational front-end to [PySCF](https://pyscf.org/).
 Students run Hartree–Fock, DFT, MP2, and CCSD(T) calculations — plus geometry
@@ -30,7 +30,7 @@ pip install git+https://github.com/ahntaeyoung1212/pyscf-cli.git
 
 Requires Python ≥ 3.9 on **Linux or macOS**. PySCF does not support Windows
 natively — Windows users should use WSL or simply run everything on
-[Google Colab](https://colab.research.google.com/github/ahntaeyoung1212/pyscf-cli/blob/main/examples/colab_quickstart.ipynb)
+[Google Colab](https://colab.research.google.com/github/ahntaeyoung1212/pyscf-cli/blob/main/example/colab_quickstart.ipynb)
 (`%pip install pyscf-cli` works there).
 
 ## Five-minute quickstart

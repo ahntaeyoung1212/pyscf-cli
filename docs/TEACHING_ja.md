@@ -234,7 +234,7 @@ pyscf-cli vib XYZ_aspirin-finish.xyz --basis sto-3g
 ## 運用メモ
 
 - **環境:** 教室では Google Colab が最も確実(インストール不要、
-  Windows 問題も回避)。`examples/colab_quickstart.ipynb` を配布してください
+  Windows 問題も回避)。`example/colab_quickstart.ipynb` を配布してください
 - **計算時間の目安:** ここに挙げた計算はすべて1分以内(多くは数秒)。
   CCSD(T)/cc-pVTZ 以上や10原子超の分子は授業内では避けるのが無難です
   (CLI が事前警告を出します)
