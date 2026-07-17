@@ -52,8 +52,8 @@ dev = ["pytest", "ruff"]
 pyscf-cli = "pyscf_cli.main:main"
 
 [project.urls]
-Homepage = "https://github.com/mochizuki-group/pyscf-cli"
-Issues = "https://github.com/mochizuki-group/pyscf-cli/issues"
+Homepage = "https://github.com/ahntaeyoung1212/pyscf-cli"
+Issues = "https://github.com/ahntaeyoung1212/pyscf-cli/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pyscf_cli"]

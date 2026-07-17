@@ -17,7 +17,7 @@ Python スクリプトを表示します。
 ```bash
 pip install pyscf-cli        # (PyPI 公開後)
 # 開発版:
-pip install git+https://github.com/mochizuki-group/pyscf-cli.git
+pip install git+https://github.com/ahntaeyoung1212/pyscf-cli.git
 ```
 
 Python 3.9 以上、**Linux または macOS** で動作します。PySCF は Windows を
