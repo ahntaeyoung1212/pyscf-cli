@@ -254,6 +254,11 @@ def run(args):
             f"{occ_text:>6s}  {row['file']}"
         )
     r.add("cubes", generated)
+    r.rule()
+    r.line("VESTA tip: open each .cube directly (File > Open); the cube already")
+    r.line("contains the molecular geometry. If an extra x,y,z compass appears,")
+    r.line("a second Molecule-type phase is loaded in the same window - remove it")
+    r.line("via Edit > Edit Data > Phase... > select it > Delete.")
     r.rule("=")
     r.emit(json_target=args.json)
     return 0
