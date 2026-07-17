@@ -1,0 +1,15 @@
+==============================================
+ PySCF Geometry Optimization (pyscf-cli relax)
+==============================================
+XYZ file      : example/XYZ/XYZ_H2O.xyz
+Basis         : 6-31g
+Method        : RHF
+Theory        : scf
+Charge        : 0
+Spin (2S)     : 0
+----------------------------------------------
+Optimization finished.
+Final energy  : -75.9853591752 Ha  (-2067.666958 eV)
+Output XYZ    : XYZ_H2O_opt.xyz
+Text output   : XYZ_H2O_relax.txt
+==============================================

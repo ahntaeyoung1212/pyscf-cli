@@ -61,7 +61,7 @@ def run(args):
     r.kv("Basis", args.basis, key="basis")
     r.kv("Charge", args.charge, key="charge")
     r.kv("Spin (2S)", args.spin, key="spin")
-    r.energy("SCF E_tot", mf.e_tot, key="e_scf")
+    r.energy("SCF E_tot", mf.e_tot, key="e_scf", both_units=True)
     r.rule()
     r.line("Mode  Frequency(cm^-1)  Type")
 

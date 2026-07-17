@@ -44,16 +44,20 @@ class Report:
         if key:
             self.data[key] = value
 
-    def energy(self, label, e_hartree, key=None):
-        """An energy line in both Hartree and eV."""
-        self.line(
-            f"{label:<{_LABEL}s}: {e_hartree: .10f} Ha  "
-            f"({e_hartree * HARTREE_TO_EV: .6f} eV)"
-        )
+    def energy(self, label, e_hartree, key=None, both_units=False):
+        """An energy line, in eV by default (`both_units=True` adds Hartree).
+
+        The JSON data always carries both units regardless of display.
+        """
+        ev = e_hartree * HARTREE_TO_EV
+        if both_units:
+            self.line(f"{label:<{_LABEL}s}: {e_hartree: .10f} Ha  ({ev: .6f} eV)")
+        else:
+            self.line(f"{label:<{_LABEL}s}: {ev: .6f} eV")
         if key:
             self.data[key] = {
                 "hartree": float(e_hartree),
-                "eV": float(e_hartree * HARTREE_TO_EV),
+                "eV": float(ev),
             }
 
     def add(self, key, value):

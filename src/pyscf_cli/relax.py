@@ -8,6 +8,8 @@ exactly like the legacy script, but now stated explicitly in the output.
 
 from __future__ import annotations
 
+import os
+
 from pyscf.geomopt.geometric_solver import optimize
 
 from . import core, dryrun
@@ -28,7 +30,7 @@ def register(subparsers):
     parser.add_argument("--txt", default=None, metavar="FILE",
                         help="text summary file (default: <input>_relax.txt)")
     parser.add_argument("--out-xyz", default=None, metavar="FILE",
-                        help="optimized geometry file (default: <input>_opt.xyz)")
+                        help="optimized geometry file (default: <input>-finish.xyz)")
     parser.set_defaults(func=run)
     return parser
 
@@ -41,7 +43,8 @@ def run(args):
         return 0
 
     txt_file = args.txt or f"{core.output_stem(args, 'relax')}.txt"
-    out_xyz = args.out_xyz or f"{core.output_stem(args, 'opt')}.xyz"
+    input_root = os.path.splitext(os.path.basename(args.xyz))[0]
+    out_xyz = args.out_xyz or f"{input_root}-finish.xyz"
 
     ref_theory = "dft" if args.theory == "dft" else "scf"
 

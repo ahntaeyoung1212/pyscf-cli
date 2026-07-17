@@ -135,7 +135,7 @@ pyscf-cli/                       # GitHub リポジトリ名
 ├── examples/
 │   └── colab_quickstart.ipynb   # Colab バッジ付きノートブック
 └── .github/workflows/
-    ├── ci.yml                   # pytest (Linux + macOS, Python 3.9–3.13)
+    ├── ci.yml                   # pytest (Linux + macOS, Python 3.10–3.13)
     └── publish.yml              # タグ push → PyPI Trusted Publishing
 ```
 
@@ -143,7 +143,7 @@ pyscf-cli/                       # GitHub リポジトリ名
 
 ```toml
 [project]
-requires-python = ">=3.9"   # 開発環境 (Python 3.9.10) に合わせて 3.9 サポート
+requires-python = ">=3.10"
 dependencies = [
   "pyscf>=2.3",
   "numpy",
@@ -178,7 +178,7 @@ dev = ["pytest", "ruff"]
 - [ ] エネルギー分解(T+V_ne+J+K+V_nn = E_tot)の恒等式テスト
 - [ ] 振動数: H₂O の 3 モードが文献値 ±数% に入ること
 - [ ] スモークテスト: 全サブコマンド × 最小分子
-- [ ] GitHub Actions CI(Linux/macOS × Python 3.9–3.13)
+- [ ] GitHub Actions CI(Linux/macOS × Python 3.10–3.13)
 - [ ] 公開前コードレビュー(特に UHF 交換項・spin_square・MOM まわりの数式検証)
 
 ### Phase 4: ドキュメント
