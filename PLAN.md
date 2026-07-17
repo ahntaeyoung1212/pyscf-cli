@@ -182,10 +182,10 @@ dev = ["pytest", "ruff"]
 - [x] 公開前コードレビュー(特に UHF 交換項・spin_square・MOM まわりの数式検証)
 
 ### Phase 4: ドキュメント
-- [ ] README.md(英)/ README_ja.md — インストール、5 分クイックスタート、全サブコマンド例と出力サンプル、Colab バッジ
-- [ ] 非公式 disclaimer + PySCF 引用のお願い(PySCF の WIREs/JCP 論文)
-- [ ] Colab ノートブック(授業でそのまま配れる体裁)
-- [ ] 教員向け: 「演習アイデア集」(PES で結合解離、O₂ のスピン状態、DOS で共役系、等)
+- [x] README.md(英)/ README_ja.md — インストール、5 分クイックスタート、全サブコマンド例と出力サンプル、Colab バッジ
+- [x] 非公式 disclaimer + PySCF 引用のお願い(PySCF の WIREs/JCP 論文)
+- [x] Colab ノートブック(授業でそのまま配れる体裁)
+- [x] 教員向け: 「演習アイデア集」(PES で結合解離、O₂ のスピン状態、DOS で共役系、等)
 
 ### Phase 5: 公開
 - [ ] **TestPyPI に先行リリース** → クリーンな venv と Colab で install 検証
