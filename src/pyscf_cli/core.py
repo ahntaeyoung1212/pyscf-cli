@@ -307,11 +307,17 @@ def build_ks(mol, spin, xc, method="auto"):
 
 
 def build_reference(mol, theory, method, xc):
-    """Return an unconverged mean-field object and its display label."""
+    """Return an unconverged mean-field object and its display label.
+
+    The HF label comes from the actual object class: PySCF silently
+    promotes RHF to ROHF for open shells, and the label should say so
+    (the legacy scripts printed "RHF" in that case).
+    """
     if theory == "dft":
-        return build_ks(mol, mol.spin, xc, method), f"DFT ({xc})"
+        mf = build_ks(mol, mol.spin, xc, method)
+        return mf, f"DFT ({xc}, {type(mf).__name__})"
     mf = build_mf(mol, method)
-    return mf, method.upper()
+    return mf, type(mf).__name__
 
 
 def require_hessian_capable(method, spin):

@@ -261,4 +261,4 @@ def run(args):
     r.line("via Edit > Edit Data > Phase... > select it > Delete.")
     r.rule("=")
     r.emit(json_target=args.json)
-    return 0
+    return core.scf_exit_code(mf)

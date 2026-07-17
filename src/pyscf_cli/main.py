@@ -33,6 +33,7 @@ def _subcommand_modules():
     down the whole CLI.
     """
     from . import (
+        convert,
         dos,
         energy,
         examples,
@@ -44,7 +45,8 @@ def _subcommand_modules():
         vibmovie,
     )
 
-    return [energy, relax, vib, thermo, dos, orbitals, vibmovie, examples, info]
+    return [energy, relax, vib, thermo, dos, orbitals, vibmovie, convert,
+            examples, info]
 
 
 def build_parser():

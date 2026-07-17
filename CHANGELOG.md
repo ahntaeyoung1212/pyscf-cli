@@ -18,8 +18,16 @@ installable CLI.
   (MOM-constrained Δ-SCF) in addition to `--mom` single promotions
 - `--fixed-occ-decomp` reports the open-shell exchange integral K and
   frozen-orbital singlet/triplet estimates
-- Bundled sample molecules (`pyscf-cli examples`), curated basis/functional
-  cheat sheet (`pyscf-cli info`), teaching-oriented error messages
+- `convert`: SDF → XYZ (PubChem 3D-Conformer workflow), with the course
+  naming convention SDF_name.sdf → XYZ_name.xyz
+- `dos --coop/--cohp`: overlap/Hamilton population (COOP/COHP-like)
+  bonding analysis per element pair, with signed symlog plots, ICOOP/ICOHP
+  integrals, and per-MO populations (port of the course's dos v2.3)
+- Honest reference labels: an open-shell calculation requested as
+  `--method rhf` is reported as ROHF (which is what PySCF actually runs)
+- 18 bundled samples (`pyscf-cli examples`): molecules plus single atoms
+  H–Ne, Na, Cl with ground-state spin hints; curated basis/functional
+  cheat sheet (`pyscf-cli info`); teaching-oriented error messages
 
 ### Fixes relative to the legacy scripts
 - ZPE in `calc_pyscf.py --zpe` was overestimated by a factor of ~42.7

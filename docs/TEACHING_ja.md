@@ -5,6 +5,9 @@
 計算はすべてノートPC(または Google Colab)で数秒〜数分で終わるよう、
 小さな分子と基底で設計しています。
 
+東京理科大学「マテリアル計算科学」(全15回)との講義対応は
+[COURSE_ja.md](COURSE_ja.md) を参照(演習見出しの「第N回」は同講義の回)。
+
 前提: `pip install pyscf-cli` 済み、`pyscf-cli examples all` でサンプル分子を取得。
 
 ---
@@ -129,6 +132,100 @@ python3 my_first_pyscf.py
   説明させる
 - スクリプトを改造して(例: 基底を振る for ループ)、CLI では
   できないことを1つやらせる — これが本講義の到達点
+
+## 9. 交換エネルギーと自己相互作用(第3・9回、45分)
+
+水素原子1個 — 電子1個なのに「電子間相互作用」の項はどうなる?
+
+```bash
+pyscf-cli energy h.xyz --spin 1 --method uhf --basis 6-31g --decompose-total-energy
+pyscf-cli energy he.xyz --basis 6-31g --decompose-total-energy
+```
+
+- H では **Hartree (U) と Exchange (J) が符号違いで完全に打ち消し合う**
+  ことを確認 → 交換項の役割の一つは「自分で自分に反発する」偽の項
+  (自己相互作用)の除去である
+- He では U+J ≈ 30 eV(電子間反発)。第3回の変分見積もり・第4回の
+  1次摂動(スライドの値)と並べて表にする
+- **発展:** この自己相互作用の打ち消しが近似 DFT では不完全なこと
+  (SIE)が、固体のバンドギャップ過小評価につながる、という現代の
+  研究トピックへ接続できる
+
+## 10. He の数値ラダー — 「電子相関」に名前を付ける(第3・4回、45分)
+
+```bash
+pyscf-cli energy he.xyz --basis cc-pvdz                 # HF
+pyscf-cli energy he.xyz --basis cc-pvdz --theory ccsd   # ほぼ厳密(2電子系)
+pyscf-cli energy he.xyz --basis aug-cc-pvqz --theory ccsd
+```
+
+- 講義の数値ラダー「反発無視 −108.8 → 1次摂動 −74.8 → HF −77.9 →
+  実験 −79.0 eV」に CCSD の値を書き足させる
+- E_corr = E(CCSD) − E(HF) を計算し、「摂動でも変分でも埋まらない残り」
+  に**電子相関**という名前が付いていることを体感させる
+- 基底を上げると実験値にどこまで迫れるか?(基底極限の概念)
+
+## 11. C 原子のフント則と high/low spin(第7・9回、30分)
+
+```bash
+pyscf-cli energy c.xyz --basis 6-31g --spin 2 --method uhf   # 2p² 三重項(基底状態)
+pyscf-cli energy c.xyz --basis 6-31g --spin 4 --method uhf   # 2s¹2p³ 五重項
+```
+
+- どちらが低い? spin 4 は交換安定化(同スピン対の増加)を得るが
+  2s→2p の昇位コストを払う — フント則と昇位コストの綱引きを数値で
+- `--decompose-total-energy` で Exchange (J) 項だけを比較させると
+  交換安定化が直接見える
+- d⁴ 錯体の high/low spin の手計算課題(第9回)の数値版
+
+## 12. NaCl は気相ではイオン化しない — 固体への橋(第14回、45分)
+
+```bash
+pyscf-cli energy na.xyz --spin 1 --method uhf --basis 6-31g --json na.json
+pyscf-cli energy na.xyz --spin 0 --charge 1 --basis 6-31g --json na+.json
+pyscf-cli energy cl.xyz --spin 1 --method uhf --basis 6-31g --json cl.json
+pyscf-cli energy cl.xyz --spin 0 --charge -1 --basis "6-31+g" --json cl-.json
+```
+
+- イオン化エネルギー I(Na) と電子親和力 A(Cl) を差分から計算 →
+  **A − I < 0**: 孤立した Na + Cl は電子を渡すだけ損
+- ではなぜ食塩は Na⁺Cl⁻ なのか? → 失った分を取り返すのが結晶中の
+  **Madelung エネルギー**(第13回)— 分子計算だけで固体物理の入口に立てる
+- 注意: アニオンには diffuse 基底(`6-31+g`)が必要な点も教材になる
+
+## 13. 結合性・反結合性を「見る」— COOP/COHP 解析(第10・11回、45分)
+
+```bash
+pyscf-cli dos h2o.xyz --basis 6-31g --coop --cohp --align homo
+pyscf-cli dos oh.xyz --basis 6-31g --spin 1 --method uhf --coop --align homo
+```
+
+- OP_/HP_ プロットで、各準位が O-H 結合に対して**結合性(+)か
+  反結合性(−)か**を読み取らせる(DOS だけでは分からない情報)
+- ICOOP(積分値)は結合次数の近似指標。H₂O と OH ラジカルの O-H を比較
+- OH のスピン分解 COOP では α/β の寄与の違い(不対電子の効果)が見える
+- 注意: COOP/COHP は**元素ペア**解析なので、O₂ のような単一元素分子には
+  適用できない(異核分子を選ぶこと)
+- 固体物性で頻出する COHP 解析(LOBSTER 等)の分子版として紹介できる
+
+## 14. PubChem から一気通貫 — 実分子パイプライン(第10回、90分)
+
+Molcalc 的な体験を CLI で完結させる、実習の集大成:
+
+```bash
+# 1. PubChem で好きな分子を検索し、3D Conformer を SDF でダウンロード
+# 2. 変換 → 最適化 → 各種解析
+pyscf-cli convert SDF_aspirin.sdf          # → XYZ_aspirin.xyz
+pyscf-cli relax XYZ_aspirin.xyz --basis sto-3g
+pyscf-cli energy XYZ_aspirin-finish.xyz --basis 6-31g
+pyscf-cli dos XYZ_aspirin-finish.xyz --element-pdos --align homo
+pyscf-cli orbitals XYZ_aspirin-finish.xyz --homo --lumo
+pyscf-cli vib XYZ_aspirin-finish.xyz --basis sto-3g
+```
+
+- 学生が**自分で選んだ分子**で全機能を使う(提出課題向き)
+- 注意点も教材: 大きい分子ほど計算時間が急増(事前警告が出る)、
+  最適化前後で構造がどう変わったか VESTA で比較、など
 
 ---
 

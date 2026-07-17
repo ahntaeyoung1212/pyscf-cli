@@ -35,11 +35,13 @@ VESTA_FALLBACK_COLORS = {
 def register(subparsers):
     parser = subparsers.add_parser(
         "dos",
-        help="molecular DOS/PDOS plot from broadened MO energies",
+        help="molecular DOS/PDOS plot; COOP/COHP bonding analysis",
         description=(
             "Broaden the MO spectrum into a molecular DOS and project each MO "
             "onto AO angular-momentum channels (and optionally elements). "
-            "Writes a plot, a CSV of all curves, and a text summary."
+            "With --coop/--cohp, also compute overlap/Hamilton population "
+            "curves between element pairs (bonding vs antibonding character). "
+            "Writes plots, a CSV of all curves, and a text summary."
         ),
     )
     core.add_common_arguments(parser)
@@ -83,6 +85,24 @@ def register(subparsers):
                              "with VESTA element colors")
     parser.add_argument("--quiet", action="store_true",
                         help="do not print the MO weight table")
+
+    pair = parser.add_argument_group("bonding analysis (COOP/COHP)")
+    pair.add_argument("--coop", action="store_true",
+                      help="overlap-population (COOP-like) analysis per element pair")
+    pair.add_argument("--cohp", action="store_true",
+                      help="Hamilton-population (COHP-like) analysis per element pair")
+    pair.add_argument("--pair", nargs="+", default=None, metavar="A,B",
+                      help="element pairs, e.g. --pair C,H O,H "
+                           "(default: all element pairs in the molecule)")
+    pair.add_argument("--sigma-pair", type=float, default=0.1,
+                      help="Gaussian broadening for COOP/COHP curves in eV "
+                           "(default: 0.1)")
+    pair.add_argument("--op-output", default=None, metavar="FILE",
+                      help="COOP plot file (single --pair only; "
+                           "default: OP_<input>_<A>_<B>.pdf)")
+    pair.add_argument("--hp-output", default=None, metavar="FILE",
+                      help="COHP plot file (single --pair only; "
+                           "default: HP_<input>_<A>_<B>.pdf)")
     parser.set_defaults(func=run)
     return parser
 
@@ -175,6 +195,40 @@ def ao_element_angular_groups(mol):
     return {key: np.asarray(groups[key], dtype=int) for key in ordered}
 
 
+def parse_element_pair(pair_text):
+    parts = [p.strip() for p in pair_text.split(",")]
+    if len(parts) != 2 or not parts[0] or not parts[1]:
+        raise InputError(
+            f"--pair must be in the form Element1,Element2 (e.g. C,O); got '{pair_text}'"
+        )
+    return parts[0], parts[1]
+
+
+def default_pairs_from_atoms(atoms):
+    ordered = []
+    for elem, *_ in atoms:
+        if elem not in ordered:
+            ordered.append(elem)
+    if len(ordered) < 2:
+        raise InputError(
+            "COOP/COHP needs at least two distinct elements in the molecule "
+            "(or give --pair explicitly)."
+        )
+    return [
+        (ordered[i], ordered[j])
+        for i in range(len(ordered))
+        for j in range(i + 1, len(ordered))
+    ]
+
+
+def bond_population_for_mo(coeff_vec, mat, idx_a, idx_b):
+    """Pair population of one MO between AO groups A and B (COOP/COHP kernel)."""
+    block = mat[np.ix_(idx_a, idx_b)]
+    return np.einsum(
+        "i,ij,j->", np.conjugate(coeff_vec[idx_a]), block, coeff_vec[idx_b]
+    ).real
+
+
 def lowdin_projector(mol):
     overlap = mol.intor_symmetric("int1e_ovlp")
     eigval, eigvec = np.linalg.eigh(overlap)
@@ -264,18 +318,38 @@ def homo_energy_ev(channels):
 def build_dos(mf, args):
     channels = split_mo_channels(mf)
     groups = ao_angular_groups(mf.mol)
+    element_groups_simple = ao_element_groups(mf.mol)
     element_groups = (
         ao_element_angular_groups(mf.mol) if args.element_pdos
-        else ao_element_groups(mf.mol)
+        else element_groups_simple
     )
     element_labels = list(element_groups)
+
+    pair_keys = []
+    pair_indices = {}
+    if args.coop or args.cohp:
+        pair_keys = args.pair
+        for elem_a, elem_b in pair_keys:
+            if elem_a not in element_groups_simple or elem_b not in element_groups_simple:
+                raise InputError(
+                    f"Element pair '{elem_a},{elem_b}' not found in this molecule. "
+                    f"Available elements: {', '.join(element_groups_simple)}"
+                )
+            pair_indices[(elem_a, elem_b)] = (
+                element_groups_simple[elem_a], element_groups_simple[elem_b]
+            )
+    overlap = mf.mol.intor_symmetric("int1e_ovlp") if args.coop else None
+    hcore = mf.get_hcore() if args.cohp else None
 
     reference_ev = homo_energy_ev(channels) if args.align == "homo" else 0.0
     all_energies = np.concatenate([channel["energy"] for channel in channels])
     all_energies_ev = all_energies * HARTREE_TO_EV - reference_ev
 
     use_histogram = args.binwidth is not None
-    padding = args.padding if use_histogram else max(args.padding, 6.0 * args.sigma)
+    sigma_pair = args.sigma_pair if (args.coop or args.cohp) else args.sigma
+    sigma_for_padding = max(args.sigma, sigma_pair)
+    padding = (args.padding if use_histogram
+               else max(args.padding, 6.0 * sigma_for_padding))
     emin = np.min(all_energies_ev) - padding if args.emin is None else args.emin
     emax = np.max(all_energies_ev) + padding if args.emax is None else args.emax
 
@@ -300,6 +374,14 @@ def build_dos(mf, args):
         channel["label"]: {e: np.zeros_like(grid) for e in element_labels}
         for channel in channels
     }
+    coop_curve = {p: np.zeros_like(grid) for p in pair_keys} if args.coop else {}
+    cohp_curve = {p: np.zeros_like(grid) for p in pair_keys} if args.cohp else {}
+    spin_coop = {
+        p: {c["label"]: np.zeros_like(grid) for c in channels} for p in pair_keys
+    } if args.coop else {}
+    spin_cohp = {
+        p: {c["label"]: np.zeros_like(grid) for c in channels} for p in pair_keys
+    } if args.cohp else {}
     mo_rows = []
 
     for channel in channels:
@@ -336,9 +418,48 @@ def build_dos(mf, args):
                 element_pdos[element] += channel_pdos
                 spin_element_pdos[spin_label][element] += channel_pdos
 
+            for pair in pair_keys:
+                idx_a, idx_b = pair_indices[pair]
+                if args.coop:
+                    coop_weights = np.array([
+                        bond_population_for_mo(channel["coeff"][:, i], overlap,
+                                               idx_a, idx_b)
+                        for i in range(channel["coeff"].shape[1])
+                    ])
+                    hist, _ = np.histogram(energies_ev, bins=bin_edges,
+                                           weights=state_factor * coop_weights)
+                    part = hist / bin_widths
+                    coop_curve[pair] += part
+                    spin_coop[pair][spin_label] += part
+                if args.cohp:
+                    cohp_weights = np.array([
+                        bond_population_for_mo(channel["coeff"][:, i], hcore,
+                                               idx_a, idx_b) * HARTREE_TO_EV
+                        for i in range(channel["coeff"].shape[1])
+                    ])
+                    hist, _ = np.histogram(energies_ev, bins=bin_edges,
+                                           weights=state_factor * cohp_weights)
+                    part = hist / bin_widths
+                    cohp_curve[pair] += part
+                    spin_cohp[pair][spin_label] += part
+
         for mo_index, energy_ev in enumerate(energies_ev):
+            coop_mo = {}
+            cohp_mo_ev = {}
+            for pair in pair_keys:
+                idx_a, idx_b = pair_indices[pair]
+                if args.coop:
+                    coop_mo[pair] = bond_population_for_mo(
+                        channel["coeff"][:, mo_index], overlap, idx_a, idx_b
+                    )
+                if args.cohp:
+                    cohp_mo_ev[pair] = bond_population_for_mo(
+                        channel["coeff"][:, mo_index], hcore, idx_a, idx_b
+                    ) * HARTREE_TO_EV
+
             if not use_histogram:
                 broadening = gaussian(grid, energy_ev, args.sigma)
+                broadening_pair = gaussian(grid, energy_ev, sigma_pair)
                 channel_dos = state_factor * broadening
                 dos += channel_dos
                 spin_dos[spin_label] += channel_dos
@@ -352,6 +473,15 @@ def build_dos(mf, args):
                     )
                     element_pdos[element] += channel_pdos
                     spin_element_pdos[spin_label][element] += channel_pdos
+                for pair in pair_keys:
+                    if args.coop:
+                        part = state_factor * coop_mo[pair] * broadening_pair
+                        coop_curve[pair] += part
+                        spin_coop[pair][spin_label] += part
+                    if args.cohp:
+                        part = state_factor * cohp_mo_ev[pair] * broadening_pair
+                        cohp_curve[pair] += part
+                        spin_cohp[pair][spin_label] += part
 
             occ = None if channel["occ"] is None else channel["occ"][mo_index]
             mo_rows.append(
@@ -361,12 +491,15 @@ def build_dos(mf, args):
                     "energy_ev": energy_ev,
                     "occ": occ,
                     "weights": {a: weights[a][mo_index] for a in ANGULAR_CHANNELS},
+                    "coop": coop_mo if args.coop else None,
+                    "cohp_ev": cohp_mo_ev if args.cohp else None,
                 }
             )
 
     return (
         grid, dos, pdos, element_pdos, spin_dos, spin_pdos, spin_element_pdos,
         mo_rows, reference_ev, bin_widths, element_labels,
+        pair_keys, coop_curve, cohp_curve, spin_coop, spin_cohp,
     )
 
 
@@ -523,6 +656,76 @@ def write_csv(grid, dos, pdos, element_pdos, spin_dos, spin_pdos,
     np.savetxt(csv_file, data, delimiter=",", header=",".join(headers), comments="")
 
 
+def plot_pair_quantity(grid, total_curve, spin_curve, args, title, ylabel,
+                       output_file, bin_widths, method):
+    import matplotlib.pyplot as plt
+    from matplotlib.ticker import FuncFormatter
+
+    fig, ax = plt.subplots(figsize=(7.2, 4.6))
+    spin_resolved = method == "uhf" and {"alpha", "beta"}.issubset(spin_curve.keys())
+    if spin_resolved:
+        spin_signs = {"alpha": 1.0, "beta": -1.0}
+        for spin_label in ("alpha", "beta"):
+            signed = spin_signs[spin_label] * spin_curve[spin_label]
+            if args.binwidth is None:
+                ax.plot(grid, signed, lw=1.8,
+                        ls="-" if spin_label == "alpha" else "--",
+                        label=spin_label)
+            else:
+                ax.bar(grid, signed, width=0.92 * bin_widths, align="center",
+                       edgecolor="black", linewidth=0.6,
+                       color="0.82" if spin_label == "alpha" else "0.72",
+                       label=spin_label)
+    elif args.binwidth is None:
+        ax.plot(grid, total_curve, color="black", lw=1.8, label="total")
+    else:
+        ax.bar(grid, total_curve, width=0.92 * bin_widths, align="center",
+               color="0.82", edgecolor="black", linewidth=0.6, label="total")
+
+    if args.align == "homo":
+        ax.axvline(0.0, color="0.55", lw=0.9, ls=":")
+        ax.set_xlabel("Energy - HOMO (eV)")
+    else:
+        ax.set_xlabel("Orbital energy (eV)")
+    if args.xrange is not None:
+        ax.set_xlim(args.xrange)
+    if args.yrange is not None:
+        ax.set_ylim(args.yrange)
+
+    # Pair quantities are signed (bonding vs antibonding); symlog keeps both
+    # visible across magnitudes.
+    max_abs = np.max(np.abs(total_curve))
+    if max_abs > 0.0:
+        linthresh = max(max_abs * 1.0e-3, 1.0e-6)
+        ax.set_yscale("symlog", linthresh=linthresh)
+        if args.yrange is None:
+            ax.set_ylim(-5.0 * max_abs, 5.0 * max_abs)
+
+        def _symlog_label(val, _pos):
+            if np.isclose(val, 1.0, rtol=0.0, atol=1.0e-12):
+                return "1"
+            if np.isclose(val, -1.0, rtol=0.0, atol=1.0e-12):
+                return "-1"
+            if np.isclose(val, 0.0, rtol=0.0, atol=1.0e-14):
+                return "0"
+            aval = abs(val)
+            if aval < 1.0e-300:
+                return ""
+            exp = int(np.round(np.log10(aval)))
+            if np.isclose(aval, 10.0 ** exp, rtol=1.0e-10, atol=0.0):
+                return rf"$-10^{{{exp}}}$" if val < 0 else rf"$10^{{{exp}}}$"
+            return ""
+
+        ax.yaxis.set_major_formatter(FuncFormatter(_symlog_label))
+    ax.axhline(0.0, color="0.55", lw=0.8)
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+    ax.legend(frameon=False)
+    fig.tight_layout()
+    fig.savefig(output_file, dpi=args.dpi)
+    plt.close(fig)
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -542,6 +745,18 @@ def run(args):
     if args.yrange is not None and args.yrange[0] >= args.yrange[1]:
         raise InputError("--yrange must satisfy YMIN < YMAX")
 
+    if args.pair is not None and not (args.coop or args.cohp):
+        raise InputError("--pair requires --coop and/or --cohp.")
+    if args.coop or args.cohp:
+        if args.pair is None:
+            args.pair = default_pairs_from_atoms(args.atoms)
+        else:
+            args.pair = [parse_element_pair(p) for p in args.pair]
+        if args.op_output is not None and len(args.pair) > 1:
+            raise InputError("--op-output needs exactly one --pair.")
+        if args.hp_output is not None and len(args.pair) > 1:
+            raise InputError("--hp-output needs exactly one --pair.")
+
     input_root = os.path.splitext(os.path.basename(args.xyz))[0]
     output_file = args.output or f"DOS_{input_root}.pdf"
     root, _ = os.path.splitext(output_file)
@@ -553,7 +768,8 @@ def run(args):
     mf, e_tot, info = core.run_theory(mol, args.theory, args.method, args.xc)
 
     (grid, dos, pdos, element_pdos, spin_dos, spin_pdos, spin_element_pdos,
-     mo_rows, reference_ev, bin_widths, element_labels) = build_dos(mf, args)
+     mo_rows, reference_ev, bin_widths, element_labels,
+     pair_keys, coop_curve, cohp_curve, spin_coop, spin_cohp) = build_dos(mf, args)
 
     title = f"{os.path.basename(args.xyz)}  {args.theory.upper()}/{args.basis}"
     plot_dos(grid, dos, pdos, element_pdos, spin_dos, spin_pdos,
@@ -562,6 +778,32 @@ def run(args):
     write_csv(grid, dos, pdos, element_pdos, spin_dos, spin_pdos,
               spin_element_pdos, element_labels, csv_file, args.method,
               args.element_pdos)
+
+    op_output = {}
+    hp_output = {}
+    base = os.path.basename(args.xyz)
+    if args.coop:
+        for pair in pair_keys:
+            op_path = (args.op_output if args.op_output is not None
+                       else f"OP_{input_root}_{pair[0]}_{pair[1]}.pdf")
+            plot_pair_quantity(
+                grid, coop_curve[pair], spin_coop[pair], args,
+                f"{base}  Overlap Population Density ({pair[0]},{pair[1]})",
+                "Overlap Population Density (OPDOS)", op_path, bin_widths,
+                args.method,
+            )
+            op_output[pair] = op_path
+    if args.cohp:
+        for pair in pair_keys:
+            hp_path = (args.hp_output if args.hp_output is not None
+                       else f"HP_{input_root}_{pair[0]}_{pair[1]}.pdf")
+            plot_pair_quantity(
+                grid, cohp_curve[pair], spin_cohp[pair], args,
+                f"{base}  Hamilton Population Density ({pair[0]},{pair[1]})",
+                "Hamilton Population Density (HPDOS, eV/eV)", hp_path,
+                bin_widths, args.method,
+            )
+            hp_output[pair] = hp_path
 
     r = Report("PySCF Molecular DOS (pyscf-cli dos)")
     r.kv("XYZ file", args.xyz, key="xyz")
@@ -591,16 +833,45 @@ def run(args):
         labels = [f"{element}({angular})" for element, angular in element_labels]
         r.kv("Element PDOS", ", ".join(labels))
 
+    if args.coop or args.cohp:
+        r.kv("Pair analysis", ", ".join(f"{a},{b}" for a, b in pair_keys))
+        for pair, path in op_output.items():
+            r.kv("OP output", f"{pair[0]},{pair[1]} -> {path}")
+        for pair, path in hp_output.items():
+            r.kv("HP output", f"{pair[0]},{pair[1]} -> {path}")
+        occ_rows = [row for row in mo_rows
+                    if row["occ"] is not None and row["occ"] > 1.0e-8]
+        icoop = {}
+        icohp = {}
+        if args.coop:
+            for pair in pair_keys:
+                icoop[pair] = sum(row["occ"] * row["coop"][pair]
+                                  for row in occ_rows)
+                r.kv(f"ICOOP({pair[0]},{pair[1]})", f"{icoop[pair]:.6f}")
+        if args.cohp:
+            for pair in pair_keys:
+                icohp[pair] = sum(row["occ"] * row["cohp_ev"][pair]
+                                  for row in occ_rows)
+                r.kv(f"ICOHP({pair[0]},{pair[1]})", f"{icohp[pair]:.6f} eV")
+        r.add("icoop", {f"{a},{b}": float(v) for (a, b), v in icoop.items()})
+        r.add("icohp_eV", {f"{a},{b}": float(v) for (a, b), v in icohp.items()})
+
     if not args.quiet:
         energy_header = "E-HOMO(eV)" if args.align == "homo" else "energy(eV)"
+        first_pair = pair_keys[0] if (args.coop or args.cohp) else None
+        extra = ""
+        if args.coop:
+            extra += f"    OP({first_pair[0]},{first_pair[1]})"
+        if args.cohp:
+            extra += f"    HP({first_pair[0]},{first_pair[1]},eV)"
         r.line()
         r.line("MO projected weights:")
         r.line(f"spin         MO    {energy_header:>10s}    occ"
-               "        s        p        d        f")
-        r.line("-" * 74)
+               "        s        p        d        f" + extra)
+        r.line("-" * (74 + (24 if extra else 0)))
         for row in mo_rows:
             occ_text = "NA" if row["occ"] is None else f"{row['occ']:.3g}"
-            r.line(
+            line = (
                 f"{row['spin']:<10s} {row['mo']:3d} "
                 f"{row['energy_ev']:12.5f} {occ_text:>6s} "
                 f"{row['weights']['s']:8.4f} "
@@ -608,6 +879,11 @@ def run(args):
                 f"{row['weights']['d']:8.4f} "
                 f"{row['weights']['f']:8.4f}"
             )
+            if args.coop:
+                line += f"   {row['coop'][first_pair]:10.6f}"
+            if args.cohp:
+                line += f"   {row['cohp_ev'][first_pair]:12.6f}"
+            r.line(line)
 
     r.add("mo_rows", [
         {
@@ -616,9 +892,13 @@ def run(args):
             "energy_eV": float(row["energy_ev"]),
             "occ": None if row["occ"] is None else float(row["occ"]),
             "weights": {a: float(w) for a, w in row["weights"].items()},
+            "coop": (None if row["coop"] is None else
+                     {f"{a},{b}": float(v) for (a, b), v in row["coop"].items()}),
+            "cohp_eV": (None if row["cohp_ev"] is None else
+                        {f"{a},{b}": float(v) for (a, b), v in row["cohp_ev"].items()}),
         }
         for row in mo_rows
     ])
     r.rule("=")
     r.emit(txt_path=txt_file, json_target=args.json)
-    return 0
+    return core.scf_exit_code(mf)

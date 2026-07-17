@@ -36,3 +36,6 @@ vib_movies_*/
 *_orbitals/
 *_vibmovie/
 result.json
+
+# Course slides and original tutorials (local reference; not for the public repo)
+slides/

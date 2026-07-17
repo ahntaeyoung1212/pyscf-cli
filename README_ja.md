@@ -41,10 +41,11 @@ pyscf-cli info                  # 基底関数系・汎関数の早見表
 | `relax` | 構造最適化(geomeTRIC)。`<入力名>-finish.xyz` を出力 |
 | `vib` | 調和振動数、虚振動の検出、振動準位 E_n |
 | `thermo` | ZPE、E/H/G/S/Cp(温度・圧力指定可) |
-| `dos` | 分子DOS/PDOS図(s/p/d/f・元素分解、Löwdin/Mulliken、スピン分解) |
+| `dos` | 分子DOS/PDOS図(s/p/d/f・元素分解、Löwdin/Mulliken、スピン分解)+ COOP/COHP 結合性解析 |
 | `orbitals` | MO の cube ファイル出力(VESTA/Avogadro 用) |
 | `vibmovie` | 振動モードごとの GIF アニメーション |
-| `examples` | サンプル分子(H₂, H₂O, O₂, CO₂, NH₃, CH₄, ベンゼン) |
+| `convert` | SDF → XYZ 変換(PubChem ダウンロード→計算のパイプライン) |
+| `examples` | サンプル18種: 分子(H₂O, O₂, CO₂, NH₃, CH₄, ベンゼン等)+ 単原子(H〜Ne, Na, Cl) |
 | `info` | 基底関数系・汎関数・理論レベルの解説付き一覧 |
 
 使用例:

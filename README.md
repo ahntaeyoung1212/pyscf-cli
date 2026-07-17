@@ -69,10 +69,11 @@ and every subcommand has `--help`.
 | `relax` | geometry optimization (geomeTRIC); writes `<input>-finish.xyz` |
 | `vib` | harmonic frequencies, imaginary-mode detection, quantized levels E_n |
 | `thermo` | ZPE, E/H/G/S/Cp at chosen T and p |
-| `dos` | molecular DOS/PDOS plots (s/p/d/f- and element-resolved, Löwdin/Mulliken, spin-resolved) |
+| `dos` | molecular DOS/PDOS plots (s/p/d/f- and element-resolved, Löwdin/Mulliken, spin-resolved) + COOP/COHP bonding analysis |
 | `orbitals` | cube files of MOs (HOMO/LUMO/any) for VESTA/Avogadro |
 | `vibmovie` | animated GIF of each normal mode |
-| `examples` | bundled sample molecules (H₂, H₂O, O₂, CO₂, NH₃, CH₄, benzene) |
+| `convert` | SDF → XYZ (PubChem download → calculation pipeline) |
+| `examples` | 18 bundled samples: molecules (H₂O, O₂, CO₂, NH₃, CH₄, benzene…) and atoms (H–Ne, Na, Cl) |
 | `info` | curated basis-set / functional cheat sheet |
 
 A tour:
@@ -85,8 +86,10 @@ pyscf-cli relax h2o.xyz --basis 6-31g
 pyscf-cli vib h2o.xyz --basis 6-31g
 pyscf-cli thermo h2o.xyz --basis 6-31g --temp 298.15
 pyscf-cli dos benzene.xyz --element-pdos --align homo
+pyscf-cli dos h2o.xyz --coop --cohp                        # bonding/antibonding analysis
 pyscf-cli orbitals h2o.xyz --homo --lumo                   # cube files for VESTA
 pyscf-cli vibmovie h2o.xyz --basis 6-31g                   # GIF per normal mode
+pyscf-cli convert SDF_aspirin.sdf                          # PubChem SDF -> XYZ
 ```
 
 ## Designed for teaching
