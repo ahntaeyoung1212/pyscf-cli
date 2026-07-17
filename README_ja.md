@@ -94,4 +94,4 @@ pyscf-cli 自体の DOI(Zenodo)は正式リリース時に発行予定です。
 
 ## ライセンス
 
-MIT © 2026 望月泰秀(東京理科大学)。PySCF 本体は Apache-2.0 です。
+MIT © 2026 望月泰英(東京理科大学)。PySCF 本体は Apache-2.0 です。

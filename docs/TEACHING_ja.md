@@ -121,7 +121,7 @@ done
 - **問い:** 「基底を良くする」と「理論を良くする」はどちらが効くか?
   計算時間はどうスケールするか(CCSD(T) は N⁷!)
 
-## 8. 卒業試験 — CLI から PySCF へ(自習)
+## 8. 上級者向け — CLI から PySCF へ(自習)
 
 ```bash
 pyscf-cli energy h2o.xyz --theory mp2 --basis cc-pvdz --dry-run > my_first_pyscf.py
@@ -148,7 +148,7 @@ pyscf-cli energy he.xyz --basis 6-31g --decompose-total-energy
 - He では U+J ≈ 30 eV(電子間反発)。第3回の変分見積もり・第4回の
   1次摂動(スライドの値)と並べて表にする
 - **発展:** この自己相互作用の打ち消しが近似 DFT では不完全なこと
-  (SIE)が、固体のバンドギャップ過小評価につながる、という現代の
+  (SIE, Self-Interaction Error)が、固体のバンドギャップ過小評価につながる、という現代の
   研究トピックへ接続できる
 
 ## 10. He の数値ラダー — 「電子相関」に名前を付ける(第3・4回、45分)
@@ -170,6 +170,8 @@ pyscf-cli energy he.xyz --basis aug-cc-pvqz --theory ccsd
 ```bash
 pyscf-cli energy c.xyz --basis 6-31g --spin 2 --method uhf   # 2p² 三重項(基底状態)
 pyscf-cli energy c.xyz --basis 6-31g --spin 4 --method uhf   # 2s¹2p³ 五重項
+pyscf-cli energy c.xyz --basis 6-31g --spin 2 --method uhf --decompose-total-energy
+pyscf-cli energy c.xyz --basis 6-31g --spin 4 --method uhf --decompose-total-energy
 ```
 
 - どちらが低い? spin 4 は交換安定化(同スピン対の増加)を得るが
