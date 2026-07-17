@@ -27,3 +27,12 @@ relax_*.txt
 WF_*/
 vib_movies_*/
 *-finish.xyz
+
+# Outputs with the new naming convention (<input>_<kind>.*)
+*_relax.txt
+*_dos.pdf
+*_dos.csv
+*_dos.txt
+*_orbitals/
+*_vibmovie/
+result.json
