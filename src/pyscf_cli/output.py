@@ -51,7 +51,7 @@ class Report:
         """
         ev = e_hartree * HARTREE_TO_EV
         if both_units:
-            self.line(f"{label:<{_LABEL}s}: {e_hartree: .10f} Ha  ({ev: .6f} eV)")
+            self.line(f"{label:<{_LABEL}s}: {ev: .6f} eV  ({e_hartree: .10f} Eh)")
         else:
             self.line(f"{label:<{_LABEL}s}: {ev: .6f} eV")
         if key:

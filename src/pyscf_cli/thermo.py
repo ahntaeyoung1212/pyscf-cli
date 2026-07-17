@@ -38,7 +38,7 @@ def register(subparsers):
 def _energy_row(r, key, result):
     value, unit = result[key]
     if unit == "Eh":
-        r.line(f"{key:12s}: {value: .10f} Eh  ({value * HARTREE_TO_EV: .6f} eV)")
+        r.line(f"{key:12s}: {value * HARTREE_TO_EV: .6f} eV  ({value: .10f} Eh)")
         r.add(key, {"hartree": float(value), "eV": float(value * HARTREE_TO_EV)})
     else:
         r.line(f"{key:12s}: {value} {unit}")
@@ -48,7 +48,7 @@ def _energy_row(r, key, result):
 def _entropy_row(r, key, result):
     value, unit = result[key]
     if unit == "Eh/K":
-        r.line(f"{key:12s}: {value: .10e} Eh/K ({value * HARTREE_TO_EV: .10e} eV/K)")
+        r.line(f"{key:12s}: {value * HARTREE_TO_EV: .10e} eV/K ({value: .10e} Eh/K)")
         r.add(key, {"hartree_per_K": float(value),
                     "eV_per_K": float(value * HARTREE_TO_EV)})
     else:

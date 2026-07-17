@@ -242,12 +242,18 @@ def _total_decomposition_section(r, mf):
     d = decompose_total_energy(mf)
     r.line()
     r.line("Total-energy decomposition:")
-    r.energy("  Kinetic T", d["e_kin"], key="decomp_kinetic")
-    r.energy("  Nuc-el V_ne", d["e_vne"], key="decomp_vne")
-    r.energy("  Hartree U", d["e_u"], key="decomp_hartree")
-    r.energy("  Exchange J", d["e_j"], key="decomp_exchange")
-    r.energy("  Nuc-nuc V_nn", d["e_nuc"], key="decomp_vnn")
-    r.energy("  Sum", d["e_tot"], key="decomp_sum")
+    rows = [
+        ("Kinetic (T)", "e_kin", "decomp_kinetic"),
+        ("Nuc-el (V_ne)", "e_vne", "decomp_vne"),
+        ("Hartree (U)", "e_u", "decomp_hartree"),
+        ("Exchange (J)", "e_j", "decomp_exchange"),
+        ("Nuc-nuc (V_nn)", "e_nuc", "decomp_vnn"),
+        ("Sum", "e_tot", "decomp_sum"),
+    ]
+    for label, dkey, jkey in rows:
+        ev = d[dkey] * HARTREE_TO_EV
+        r.line(f"  {label:<14s}: {ev: .6f} eV")
+        r.add(jkey, {"hartree": float(d[dkey]), "eV": float(ev)})
 
 
 def _zpe_section(r, mf):

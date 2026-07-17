@@ -71,11 +71,11 @@ def register(subparsers):
                         help="do not count restricted MOs as doubly degenerate")
     parser.set_defaults(spin_degeneracy=True)
     parser.add_argument("--output", default=None, metavar="FILE",
-                        help="plot file (default: <input>_dos.pdf)")
+                        help="plot file (default: DOS_<input>.pdf)")
     parser.add_argument("--csv", default=None, metavar="FILE",
-                        help="CSV file (default: <input>_dos.csv)")
+                        help="CSV file (default: DOS_<input>.csv)")
     parser.add_argument("--txt", default=None, metavar="FILE",
-                        help="text summary file (default: <input>_dos.txt)")
+                        help="text summary file (default: DOS_<input>.txt)")
     parser.add_argument("--dpi", type=int, default=200,
                         help="raster output resolution (default: 200)")
     parser.add_argument("--element-pdos", action="store_true",
@@ -542,7 +542,8 @@ def run(args):
     if args.yrange is not None and args.yrange[0] >= args.yrange[1]:
         raise InputError("--yrange must satisfy YMIN < YMAX")
 
-    output_file = args.output or f"{core.output_stem(args, 'dos')}.pdf"
+    input_root = os.path.splitext(os.path.basename(args.xyz))[0]
+    output_file = args.output or f"DOS_{input_root}.pdf"
     root, _ = os.path.splitext(output_file)
     csv_file = args.csv or root + ".csv"
     txt_file = args.txt or root + ".txt"
