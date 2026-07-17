@@ -41,3 +41,6 @@ result.json
 slides/
 example/example_all/
 example_all/
+
+# Superseded original scripts: kept locally for reference, not published
+legacy/
